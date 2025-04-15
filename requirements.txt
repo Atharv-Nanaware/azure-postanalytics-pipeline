@@ -1,0 +1,16 @@
+apache-airflow==2.9.3
+apache-airflow-providers-common-sql==1.24.0
+pandas==2.2.3
+numpy==2.0.2
+praw==7.8.1
+prawcore==2.4.0
+azure-storage-blob==12.25.0
+azure-storage-file-datalake==12.19.0
+azure-core==1.32.0
+configparser==6.0.0
+python-dateutil==2.9.0
+kafka-python-ng==2.2.2
+psycopg2-binary==2.9.9
+sqlalchemy==1.4.54
+requests==2.32.3
+urllib3==2.3.0
