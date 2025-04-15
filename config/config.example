@@ -1,0 +1,27 @@
+
+[file_paths]
+input_path = /opt/airflow/data/input
+output_path = /opt/airflow/data/output
+
+[api_keys]
+
+client_id = "your-client_id"
+secret_key = "your_secret_key"
+user_agent= "app-name"
+
+[etl_settings]
+batch_size = 100
+error_handling = abort
+log_level = info
+
+
+[azure]
+ACCOUNT_NAME= "azure-gen2-storage-account"
+FILE_SYSTEM_NAME= "target-container-name"
+ACCOUNT_KEY= "account-key"
+ACCOUNT_URL= "account-url"
+
+
+
+
+
