@@ -1,6 +1,6 @@
 x-airflow-common:
   &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.9.3}
+  build: .
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -10,7 +10,7 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    _PIP_ADDITIONAL_REQUIREMENTS: "kafka-python-ng==2.2.2 ${_PIP_ADDITIONAL_REQUIREMENTS:-}"
+    _PIP_ADDITIONAL_REQUIREMENTS: "kafka-python-ng==2.2.2 praw==7.8.1 prawcore==2.4.0 ${_PIP_ADDITIONAL_REQUIREMENTS:-}"
 
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
@@ -52,9 +52,8 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
-    build: .
     command: webserver
-    entrypoint: ['/opt/airflow/script/entrypoint.sh']
+    entrypoint: ['/opt/airflow/script/entrypoint.sh', 'webserver']
     ports:
       - "8080:8080"
     healthcheck:
@@ -74,8 +73,9 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
+    entrypoint: ['/opt/airflow/script/entrypoint.sh', 'scheduler']
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -91,6 +91,7 @@ services:
   airflow-triggerer:
     <<: *airflow-common
     command: triggerer
+    entrypoint: ['/opt/airflow/script/entrypoint.sh', 'triggerer']
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
       interval: 30s
@@ -113,6 +114,8 @@ services:
       - |
         mkdir -p /sources/logs /sources/dags /sources/plugins
         chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        pip install -r /opt/airflow/requirements.txt
+        pip install praw==7.8.1 prawcore==2.4.0
         exec /entrypoint airflow version
     environment:
       <<: *airflow-common-env
