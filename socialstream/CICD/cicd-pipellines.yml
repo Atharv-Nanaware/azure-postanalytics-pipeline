@@ -1,0 +1,47 @@
+trigger:
+  - main
+
+variables:
+  - group: dev-databricksCICD
+  - group: uat-databricksCICD
+  - group: prod-databricksCICD
+
+  - name: vmImageName
+    value: "windows-latest"
+  - name: notebooksPath
+    value: "Notebooks"
+
+pool:
+  vmImage: $(vmImageName)
+
+
+stages:
+  - template: templates/deploy-notebooks.yml
+    parameters:
+      stageId: "Deploy_to_Dev_Environment"
+      env: "dev"
+      environmentName: $(dev-environment-name)
+      resourceGroupName: $(dev-resource-group-name)
+      serviceConnection: $(dev-service-connection-name)
+      notebooksPath: $(notebooksPath)
+
+  - template: templates/deploy-notebooks.yml
+    parameters:
+      dependsOn: [ "Deploy_to_Dev_Environment" ]
+      stageId: "Deploy_to_UAT_Environment"
+      env: "uat"
+      environmentName: $(uat-environment-name)
+      resourceGroupName: $(uat-resource-group-name)
+      serviceConnection: $(uat-service-connection-name)
+      notebooksPath: $(notebooksPath)
+
+  - template: templates/deploy-notebooks.yml
+    parameters:
+      dependsOn: [ "Deploy_to_UAT_Environment" ]
+      stageId: "Deploy_to_PROD_Environment"
+      env: "prod"
+      environmentName: $(prod-environment-name)
+      resourceGroupName: $(prod-resource-group-name)
+      serviceConnection: $(prod-service-connection-name)
+      notebooksPath: $(notebooksPath)
+

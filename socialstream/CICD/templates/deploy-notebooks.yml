@@ -1,0 +1,92 @@
+parameters:
+  - name: stageId
+    type: string
+  - name: dependsOn
+    type: object
+    default: []
+  - name: env
+    type: string
+  - name: environmentName
+    type: string
+  - name: resourceGroupName
+    type: string
+  - name: serviceConnection
+    type: string
+  - name: notebooksPath
+    type: string
+
+stages:
+  - stage: "${{ parameters.stageId }}"
+    displayName: "Deploying to [${{upper(parameters.env)}}] Environment"
+    dependsOn: ${{ parameters.dependsOn }}
+    jobs:
+      - deployment: Deploy
+        displayName: "Deploying Databricks Notebooks"
+        environment: ${{parameters.environmentName}}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  inputs:
+                    azureSubscription: ${{parameters.serviceConnection}}
+                    scriptType: "pscore"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      az config set extension.use_dynamic_install=yes_without_prompt
+
+                      $databricksWorkspace = (az resource list --resource-group ${{parameters.resourceGroupName}} --query "[?type=='Microsoft.Databricks/workspaces']" | ConvertFrom-Json)[0]
+                      $databricksWorkspaceInfo = (az databricks workspace show --ids $databricksWorkspace.id | ConvertFrom-Json)
+
+                      $bearerToken = $(Build.Repository.LocalPath)/CICD/scripts/DatabricksToken.ps1 -databricksWorkspaceResourceId $databricksWorkspaceInfo.id -databricksWorkspaceUrl $databricksWorkspaceInfo.workspaceUrl
+
+                      $sourcePath = "$(Build.Repository.LocalPath)/${{parameters.notebooksPath}}"
+                      $destinationPath = "/live"  # Change this to your desired destination path
+
+
+                      # Create folder in Databricks
+                      $bodyMkDir = @{
+                        "path" = "/live";
+                      }
+                      
+                      $mkdirResp = Invoke-RestMethod -Uri "https://$($databricksWorkspaceInfo.workspaceUrl)/api/2.0/workspace/mkdirs" -Body ($bodyMkDir | ConvertTo-Json) -Method 'POST' -Headers @{ "Authorization" = "Bearer $bearerToken" }
+
+                      # Iterate through notebooks in the source path and copy them to the destination path
+                      Get-ChildItem -Path $sourcePath | ForEach-Object {
+                          $notebookName = $_.BaseName
+                          Write-Host "Copying notebook: $notebookName"
+
+                          # Construct the Databricks REST API request URL
+                          $url = "https://$($databricksWorkspaceInfo.workspaceUrl)/api/2.0/workspace/import"
+                          Write-Host "URL: $url"
+
+                          $fileExtension = $_.Extension
+
+                          # Determine language based on file extension
+                          if ($fileExtension -eq ".ipynb") {
+                              $format = "JUPYTER"
+                          } elseif ($fileExtension -eq ".py") {
+                              $format = "SOURCE"
+                          } else {
+                              Write-Host "Unsupported file type: $fileName"
+                              return
+                          }
+
+                          # Read and encode file content as Base64
+                          $contentBase64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($_.FullName))
+
+                          # Prepare the request body
+                          $body = @{
+                              "path" = "$destinationPath/$notebookName"
+                              "format" = $format
+                              "language" = "PYTHON"
+                              "content" = $contentBase64
+                              "overwrite" = "true"
+                          }
+                          
+                          # Send the API request to import the notebook
+                          Invoke-RestMethod -Uri $url -Method Post -Headers @{ "Authorization" = "Bearer $bearerToken" } -Body ($body | ConvertTo-Json) -ContentType "application/json"
+                      }
+
+                      Write-Host "Notebooks copied to Databricks workspace."
