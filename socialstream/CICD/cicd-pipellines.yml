@@ -10,14 +10,29 @@ variables:
     value: "windows-latest"
   - name: notebooksPath
     value: "Notebooks"
+  - name: bicepPath
+    value: "CICD/bicep"
 
 pool:
   vmImage: $(vmImageName)
 
 
 stages:
+  # DEV Environment - Infrastructure Deployment
+  - template: templates/deploy-bicep.yml
+    parameters:
+      stageId: "Deploy_to_Dev_Infrastructure"
+      env: "dev"
+      environmentName: $(dev-environment-name)
+      resourceGroupName: $(dev-resource-group-name)
+      serviceConnection: $(dev-service-connection-name)
+      bicepPath: $(bicepPath)
+      parametersFile: "dev.parameters.json"
+
+  # DEV Environment - Notebook Deployment
   - template: templates/deploy-notebooks.yml
     parameters:
+      dependsOn: [ "Deploy_to_Dev_Infrastructure" ]
       stageId: "Deploy_to_Dev_Environment"
       env: "dev"
       environmentName: $(dev-environment-name)
@@ -25,9 +40,22 @@ stages:
       serviceConnection: $(dev-service-connection-name)
       notebooksPath: $(notebooksPath)
 
-  - template: templates/deploy-notebooks.yml
+  # UAT Environment - Infrastructure Deployment  
+  - template: templates/deploy-bicep.yml
     parameters:
       dependsOn: [ "Deploy_to_Dev_Environment" ]
+      stageId: "Deploy_to_UAT_Infrastructure"
+      env: "uat"
+      environmentName: $(uat-environment-name)
+      resourceGroupName: $(uat-resource-group-name)
+      serviceConnection: $(uat-service-connection-name)
+      bicepPath: $(bicepPath)
+      parametersFile: "uat.parameters.json"
+
+  # UAT Environment - Notebook Deployment
+  - template: templates/deploy-notebooks.yml
+    parameters:
+      dependsOn: [ "Deploy_to_UAT_Infrastructure" ]
       stageId: "Deploy_to_UAT_Environment"
       env: "uat"
       environmentName: $(uat-environment-name)
@@ -35,13 +63,25 @@ stages:
       serviceConnection: $(uat-service-connection-name)
       notebooksPath: $(notebooksPath)
 
-  - template: templates/deploy-notebooks.yml
+  # PROD Environment - Infrastructure Deployment
+  - template: templates/deploy-bicep.yml
     parameters:
       dependsOn: [ "Deploy_to_UAT_Environment" ]
+      stageId: "Deploy_to_PROD_Infrastructure"
+      env: "prod"
+      environmentName: $(prod-environment-name)
+      resourceGroupName: $(prod-resource-group-name)
+      serviceConnection: $(prod-service-connection-name)
+      bicepPath: $(bicepPath)
+      parametersFile: "prod.parameters.json"
+
+  # PROD Environment - Notebook Deployment
+  - template: templates/deploy-notebooks.yml
+    parameters:
+      dependsOn: [ "Deploy_to_PROD_Infrastructure" ]
       stageId: "Deploy_to_PROD_Environment"
       env: "prod"
       environmentName: $(prod-environment-name)
       resourceGroupName: $(prod-resource-group-name)
       serviceConnection: $(prod-service-connection-name)
       notebooksPath: $(notebooksPath)
-

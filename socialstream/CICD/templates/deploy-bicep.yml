@@ -1,0 +1,84 @@
+parameters:
+  - name: stageId
+    type: string
+  - name: dependsOn
+    type: object
+    default: []
+  - name: env
+    type: string
+  - name: environmentName
+    type: string
+  - name: resourceGroupName
+    type: string
+  - name: serviceConnection
+    type: string
+  - name: bicepPath
+    type: string
+    default: "CICD/bicep"
+  - name: parametersFile
+    type: string
+    default: "dev.parameters.json"
+
+stages:
+  - stage: "${{ parameters.stageId }}"
+    displayName: "Deploying Infrastructure to [${{upper(parameters.env)}}]"
+    dependsOn: ${{ parameters.dependsOn }}
+    jobs:
+      - deployment: DeployInfrastructure
+        displayName: "Deploy Databricks and Supporting Resources"
+        environment: ${{parameters.environmentName}}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                - task: AzureCLI@2
+                  displayName: 'Check Resource Group Existence'
+                  inputs:
+                    azureSubscription: ${{parameters.serviceConnection}}
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      $resourceGroup = az group show --name ${{parameters.resourceGroupName}} --query name -o tsv 2>$null
+                      if (-not $resourceGroup) {
+                        Write-Host "Resource group ${{parameters.resourceGroupName}} does not exist. Creating it..."
+                        az group create --name ${{parameters.resourceGroupName}} --location "centralindia"
+                      } else {
+                        Write-Host "Resource group ${{parameters.resourceGroupName}} already exists."
+                      }
+                
+                - task: AzureCLI@2
+                  name: DeployInfrastructure
+                  displayName: 'Deploy Bicep Template'
+                  inputs:
+                    azureSubscription: ${{parameters.serviceConnection}}
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      # Deploy the Bicep template
+                      $deployment = az deployment group create `
+                        --resource-group ${{parameters.resourceGroupName}} `
+                        --template-file "$(Build.Repository.LocalPath)/${{parameters.bicepPath}}/main.bicep" `
+                        --parameters "$(Build.Repository.LocalPath)/${{parameters.bicepPath}}/parameters/${{parameters.parametersFile}}" `
+                        --output json | ConvertFrom-Json
+                        
+                      Write-Host "Deployment completed successfully."
+                      
+                      # Extract outputs for use in subsequent tasks
+                      $databricksWorkspaceName = $deployment.properties.outputs.databricksWorkspaceName.value
+                      $databricksWorkspaceId = $deployment.properties.outputs.databricksWorkspaceId.value
+                      $databricksWorkspaceUrl = $deployment.properties.outputs.databricksWorkspaceUrl.value
+                      $storageAccountName = $deployment.properties.outputs.storageAccountName.value
+                      $keyVaultName = $deployment.properties.outputs.keyVaultName.value
+                      
+                      # Set variables for use in subsequent stages
+                      Write-Host "##vso[task.setvariable variable=databricksWorkspaceName;isOutput=true]$databricksWorkspaceName"
+                      Write-Host "##vso[task.setvariable variable=databricksWorkspaceId;isOutput=true]$databricksWorkspaceId"
+                      Write-Host "##vso[task.setvariable variable=databricksWorkspaceUrl;isOutput=true]$databricksWorkspaceUrl"
+                      Write-Host "##vso[task.setvariable variable=storageAccountName;isOutput=true]$storageAccountName"
+                      Write-Host "##vso[task.setvariable variable=keyVaultName;isOutput=true]$keyVaultName"
+                      
+                      Write-Host "Databricks Workspace: $databricksWorkspaceName ($databricksWorkspaceUrl)"
+                      Write-Host "Storage Account: $storageAccountName"
+                      Write-Host "Key Vault: $keyVaultName"
